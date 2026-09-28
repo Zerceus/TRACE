@@ -229,6 +229,371 @@ const userId = response.userId ?? response.user_id;`,
   ],
 }
 
+export const MOCK_NULL_ADDEVENTLISTENER: AnalysisResult = {
+  title: "Cannot read properties of null (reading 'addEventListener')",
+  category: 'DOM / Runtime Error',
+  severity: 'high',
+  symptom: "TypeError: Cannot read properties of null (reading 'addEventListener')",
+  rootCause: "`document.getElementById('submit-btn')` returns `null` because the script executes before the DOM element exists. Property access on `null` throws immediately.",
+  confidence: 'high',
+  evidence: [
+    "`document.getElementById('submit-btn')` returns `null` when the element is not yet in the DOM.',",
+    '`button.addEventListener(...)` is called directly on the return value without a null guard.',
+    '`initializeForm()` is called at script load time — before the DOM is fully parsed.',
+    'Classic symptom of a script running in `<head>` without `defer`, or called before `DOMContentLoaded`.',
+  ],
+  executionFlow: [
+    {
+      label: 'Page begins loading',
+      description: 'The browser starts parsing HTML and encounters the script tag. If the script is in <head> without defer/async, it executes immediately — before the body is rendered.',
+      status: 'normal',
+    },
+    {
+      label: 'initializeForm() called',
+      description: 'The script calls initializeForm() synchronously at load time. The DOM has not finished parsing — the #submit-btn element does not exist yet.',
+      status: 'warning',
+    },
+    {
+      label: "getElementById('submit-btn') → null",
+      description: 'The browser searches the current DOM for an element with id="submit-btn". Since the element hasn\'t been rendered yet, it returns null.',
+      status: 'warning',
+    },
+    {
+      label: 'button.addEventListener called on null',
+      description: '`null.addEventListener(...)` — null has no properties. JavaScript cannot look up addEventListener on a null reference and throws immediately.',
+      status: 'failure',
+    },
+    {
+      label: '💥 TypeError thrown',
+      description: "TypeError: Cannot read properties of null (reading 'addEventListener'). The event listener is never attached. The submit button will not respond to clicks.",
+      status: 'failure',
+    },
+  ],
+  fix: {
+    before: `const button = document.getElementById('submit-btn');
+button.addEventListener('click', handleSubmit);
+
+initializeForm();`,
+    after: `// Option A: guard against null
+const button = document.getElementById('submit-btn');
+if (button) {
+  button.addEventListener('click', handleSubmit);
+}
+
+// Option B: defer until DOM is ready (recommended)
+document.addEventListener('DOMContentLoaded', () => {
+  initializeForm();
+});`,
+    explanation: 'Wrap DOM queries in a DOMContentLoaded listener so the script only runs after the full HTML is parsed. As a secondary safety net, always null-check the return value of getElementById before accessing its properties.',
+  },
+  regressionRisk: {
+    level: 'medium',
+    reason: 'Any script that queries DOM elements at the top level (outside DOMContentLoaded or a framework lifecycle hook) is vulnerable to this same class of error. If the element ID changes or the script load order changes, the bug reappears.',
+    tests: [
+      "getElementById returns a valid element when DOM is ready",
+      "initializeForm() is safe to call before DOMContentLoaded — should no-op or defer",
+      "submit-btn click handler fires correctly after full page load",
+      "Page works correctly with script tag in <head> and in <body>",
+    ],
+  },
+  prevention: [
+    'Always wrap DOM manipulation code in DOMContentLoaded or place scripts at the bottom of <body>.',
+    'Never call getElementById and immediately chain a method call without a null check.',
+    'Use TypeScript with strict DOM types — HTMLElement | null forces null handling at compile time.',
+    'Add integration tests that assert event listeners are attached after page load.',
+  ],
+}
+
+export const MOCK_PYTHON_KEYERROR: AnalysisResult = {
+  title: "KeyError: 'user_id'",
+  category: 'Python / Runtime Error',
+  severity: 'high',
+  symptom: "KeyError: 'user_id' in verify_token() at app/routes/auth.py line 34",
+  rootCause: "The JWT payload contains the key `sub` (standard JWT subject claim) instead of the custom key `user_id`. The code assumes a non-standard key name that was never present in the token.",
+  confidence: 'high',
+  evidence: [
+    "The token payload shown is: `{\"sub\": \"abc123\", \"email\": \"user@example.com\", \"exp\": 1735689600}`.",
+    "The key `user_id` is not present anywhere in the decoded payload.",
+    "The code directly accesses `payload['user_id']` with no `.get()` fallback or KeyError handler.",
+    "JWT standard uses `sub` (subject) for user identity — not `user_id`.",
+  ],
+  executionFlow: [
+    {
+      label: 'Client sends request with JWT',
+      description: 'An authenticated HTTP request arrives with a Bearer token in the Authorization header.',
+      status: 'normal',
+    },
+    {
+      label: 'jwt.decode() succeeds',
+      description: 'The token is valid, signature checks pass, expiry is valid. decode_token() returns the payload dict successfully.',
+      status: 'normal',
+    },
+    {
+      label: "payload['user_id'] accessed",
+      description: "The code expects a custom key 'user_id' in the payload. The actual payload uses the standard JWT claim 'sub' for user identity. Python dict lookup raises KeyError for missing keys.",
+      status: 'failure',
+    },
+    {
+      label: '💥 KeyError raised',
+      description: "KeyError: 'user_id' — Python raises immediately. The user_id variable is never assigned. The authentication check fails and the request is rejected with a 500 error.",
+      status: 'failure',
+    },
+  ],
+  fix: {
+    before: `user_id = payload['user_id']`,
+    after: `# Option A: read the standard JWT 'sub' claim
+user_id = payload['sub']
+
+# Option B: support both for backwards compatibility
+user_id = payload.get('user_id') or payload.get('sub')
+if not user_id:
+    raise ValueError('Token missing user identity claim')`,
+    explanation: "The JWT spec uses 'sub' (subject) as the standard user identity claim. Either update the key to 'sub', or use dict.get() with a fallback so missing keys return None instead of raising. Always validate that the resulting value is not None.",
+  },
+  regressionRisk: {
+    level: 'high',
+    reason: 'If the token issuer changes payload structure (e.g. during an auth provider migration), any hardcoded key access will break silently or raise. There are likely other places in the codebase reading payload keys directly.',
+    tests: [
+      "Token with 'sub' claim — verify_token() returns correct user_id",
+      "Token with legacy 'user_id' claim — backwards compatibility check",
+      "Token missing all identity claims — should raise AuthenticationError, not KeyError",
+      "Expired token — should raise ExpiredSignatureError before key access",
+    ],
+  },
+  prevention: [
+    "Use payload.get('key') instead of payload['key'] for all JWT claim access — KeyError should never reach a 500 response.",
+    'Define a typed dataclass or Pydantic model for your JWT payload so missing fields are caught at parse time.',
+    'Write a JWT payload schema validator that runs immediately after decode() and raises AuthenticationError on missing required claims.',
+    'Add a contract test that asserts the shape of every token your auth provider issues.',
+  ],
+}
+
+export const MOCK_REACT_INFINITE_LOOP: AnalysisResult = {
+  title: 'Maximum update depth exceeded — infinite re-render loop',
+  category: 'React / Runtime Warning',
+  severity: 'critical',
+  symptom: 'Warning: Maximum update depth exceeded. Component calls setState inside useEffect with a dependency that changes on every render.',
+  rootCause: '`filteredItems` is listed as a dependency of the useEffect that calls `setFilteredItems`. Every time the effect runs it updates `filteredItems`, which triggers the effect again — creating an infinite loop.',
+  confidence: 'high',
+  evidence: [
+    '`filteredItems` appears in both the dependency array and is set inside the effect via `setFilteredItems`.',
+    '`setLastUpdated(new Date())` creates a new Date object on every render — but `filteredItems` is the primary loop driver.',
+    'React detects the cycle after hitting the maximum update depth (typically ~50 renders) and throws.',
+    '`items` alone as a dependency would be safe — `filteredItems` is the self-referential dependency causing the loop.',
+  ],
+  executionFlow: [
+    {
+      label: 'Component renders',
+      description: 'The component renders for the first time. `filteredItems` is initialized (empty array or initial value).',
+      status: 'normal',
+    },
+    {
+      label: 'useEffect fires',
+      description: 'After render, React runs the effect because its dependencies ([items, filteredItems]) changed. processItems(items) runs and produces a new array.',
+      status: 'normal',
+    },
+    {
+      label: 'setFilteredItems(data) called',
+      description: 'State is updated with the new processed array. React schedules a re-render. filteredItems now has a new reference.',
+      status: 'warning',
+    },
+    {
+      label: 'Component re-renders',
+      description: 'Re-render triggered by the state update. filteredItems is now a different reference — which is listed as a dependency.',
+      status: 'warning',
+    },
+    {
+      label: '💥 Infinite loop — max depth exceeded',
+      description: 'React detects the dependency changed again, fires the effect again, which updates state again. This cycle repeats until React hits the max update depth and throws.',
+      status: 'failure',
+    },
+  ],
+  fix: {
+    before: `useEffect(() => {
+  const data = processItems(items);
+  setFilteredItems(data);
+  setLastUpdated(new Date());
+}, [items, filteredItems]);`,
+    after: `useEffect(() => {
+  const data = processItems(items);
+  setFilteredItems(data);
+  setLastUpdated(new Date());
+}, [items]); // remove filteredItems — it is set by this effect, not a trigger`,
+    explanation: "Remove `filteredItems` from the dependency array. The effect's job is to *produce* filteredItems from items — it should only re-run when `items` changes. Including its own output as a dependency creates a self-triggering loop.",
+  },
+  regressionRisk: {
+    level: 'medium',
+    reason: 'Any useEffect that both reads and writes the same state variable, or includes derived state in its dependency array, will produce this loop. This is one of the most common React mistakes and is easy to reintroduce during refactoring.',
+    tests: [
+      'Render component with initial items — assert no re-render loop (check render count)',
+      'Update items prop — assert filteredItems updates exactly once',
+      'Rapid items updates — assert component stabilizes without infinite renders',
+      'setLastUpdated should not trigger re-processing of items',
+    ],
+  },
+  prevention: [
+    'Never include a state variable in a useEffect dependency array if that same effect calls its setter.',
+    'Use the React ESLint plugin (eslint-plugin-react-hooks) — the exhaustive-deps rule flags unsafe dependency arrays.',
+    'If you need to derive state from other state, prefer useMemo over useEffect + setState.',
+    'Use React DevTools Profiler to detect components that render more than expected.',
+  ],
+}
+
+export const MOCK_NODE_UNHANDLED_REJECTION: AnalysisResult = {
+  title: 'UnhandledPromiseRejection — ECONNREFUSED to PostgreSQL',
+  category: 'Node.js / Database Error',
+  severity: 'critical',
+  symptom: 'UnhandledPromiseRejectionWarning: Error: ECONNREFUSED connect ECONNREFUSED 127.0.0.1:5432',
+  rootCause: 'The async route handler has no try/catch and no Express error middleware. When the database connection is refused (PostgreSQL not running or wrong port), the rejected promise propagates unhandled and crashes the process.',
+  confidence: 'high',
+  evidence: [
+    'The route handler is `async` but contains no try/catch block.',
+    '`await db.query(...)` throws when the database connection is refused.',
+    'Express does not automatically catch async errors — unhandled rejections in async route handlers must be explicitly caught.',
+    'ECONNREFUSED on 127.0.0.1:5432 means PostgreSQL is either not running, not on port 5432, or the connection pool was never initialized.',
+    'No error middleware (`app.use((err, req, res, next) => {...})`) is shown in the code.',
+  ],
+  executionFlow: [
+    {
+      label: 'GET /users/:id request received',
+      description: 'Express receives the request and calls the async route handler.',
+      status: 'normal',
+    },
+    {
+      label: 'getUser(id) called',
+      description: 'The async helper is invoked. It attempts to run a query against the database connection pool.',
+      status: 'normal',
+    },
+    {
+      label: 'db.query() rejects — ECONNREFUSED',
+      description: 'The database client attempts a TCP connection to 127.0.0.1:5432. The connection is refused — PostgreSQL is not accepting connections at that address.',
+      status: 'failure',
+    },
+    {
+      label: 'Promise rejection propagates unhandled',
+      description: 'The rejected promise bubbles up through getUser() and into the route handler. With no try/catch and no Express error handler, Node.js receives an unhandled rejection.',
+      status: 'failure',
+    },
+    {
+      label: '💥 Process crash / UnhandledPromiseRejectionWarning',
+      description: 'In Node 15+, unhandled promise rejections terminate the process. In older versions, a warning is emitted and the request hangs — the client receives no response.',
+      status: 'failure',
+    },
+  ],
+  fix: {
+    before: `router.get('/users/:id', async (req, res) => {
+  const user = await getUser(req.params.id);
+  res.json(user);
+});`,
+    after: `// Option A: try/catch in the route handler
+router.get('/users/:id', async (req, res, next) => {
+  try {
+    const user = await getUser(req.params.id);
+    res.json(user);
+  } catch (err) {
+    next(err); // forward to Express error middleware
+  }
+});
+
+// Option B: centralised error middleware (add once, covers all routes)
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Option C: wrap all async handlers (library: express-async-errors)
+// import 'express-async-errors'; // patches Express to catch async throws automatically`,
+    explanation: 'Async route handlers in Express do not automatically forward thrown errors. Wrap every async handler in try/catch and call next(err), or use a library like express-async-errors that patches Express globally. Also ensure the database connection pool is established before the server starts accepting requests.',
+  },
+  regressionRisk: {
+    level: 'high',
+    reason: 'Every async route handler without try/catch is a potential process crash. This pattern is widespread in Express codebases and a single missed catch will take down the server in Node 15+.',
+    tests: [
+      'Route returns 500 (not crash) when database is unavailable',
+      'Route returns user data when database is available and user exists',
+      'Route returns 404 when user is not found — not 500',
+      'Server continues accepting requests after a database error on one route',
+    ],
+  },
+  prevention: [
+    'Install express-async-errors or write a asyncHandler wrapper — never rely on manual try/catch in every route.',
+    'Add a global Express error middleware (4-argument function) as the last app.use() call.',
+    'Add a database readiness check on startup — fail fast before accepting traffic if the DB is unreachable.',
+    'Add process.on("unhandledRejection") as a last-resort logger so crashes are always recorded.',
+  ],
+}
+
+export const MOCK_GIT_NULL_CHECK_DELETED: AnalysisResult = {
+  title: "Accidental null guard deletion — TypeError on null user",
+  category: 'Git Diff / Regression',
+  severity: 'critical',
+  symptom: "TypeError: Cannot read properties of null (reading 'firstName') — in production after recent deploy",
+  rootCause: "A refactor commit removed the null guard for the `user` parameter in `formatUserDisplay()`. The function now unconditionally accesses `user.firstName` and `user.profileImage.url` — both throw when `user` is `null`.",
+  confidence: 'high',
+  evidence: [
+    "The diff shows 3 lines deleted: the `if (!user)` guard and its early return.",
+    "The function signature `user: User | null` was unchanged — null is still a valid input.",
+    "Callers that pass null (e.g. unauthenticated users, guest sessions) now receive a TypeError instead of the safe anonymous fallback.",
+    "`user.profileImage.url` is a chained property access — even if user is non-null, a missing profileImage would also throw.",
+  ],
+  executionFlow: [
+    {
+      label: 'formatUserDisplay(null) called',
+      description: 'A caller passes null — representing a guest user or unauthenticated session. This was a valid, handled case before the refactor.',
+      status: 'normal',
+    },
+    {
+      label: 'Null guard no longer present',
+      description: 'The if (!user) early return was deleted in the refactor. Execution falls through directly to the return statement.',
+      status: 'warning',
+    },
+    {
+      label: 'user.firstName accessed on null',
+      description: '`null.firstName` — JavaScript cannot read properties of null. The runtime throws immediately. The function never returns.',
+      status: 'failure',
+    },
+    {
+      label: '💥 TypeError in production',
+      description: "TypeError: Cannot read properties of null (reading 'firstName'). Any page or component that calls formatUserDisplay with a null user now crashes. Guest users see an unhandled error.",
+      status: 'failure',
+    },
+  ],
+  fix: {
+    before: `export function formatUserDisplay(user: User | null) {
+  return {
+    name: \`\${user.firstName} \${user.lastName}\`,
+    avatar: user.profileImage.url,
+  };
+}`,
+    after: `export function formatUserDisplay(user: User | null) {
+  if (!user) {
+    return { name: 'Anonymous', avatar: null };
+  }
+  return {
+    name: \`\${user.firstName} \${user.lastName}\`,
+    avatar: user.profileImage?.url ?? null,
+  };
+}`,
+    explanation: "Restore the null guard that was deleted. Also add optional chaining on `profileImage?.url` to handle cases where a non-null user has no profile image. This is the exact state before the regression was introduced.",
+  },
+  regressionRisk: {
+    level: 'high',
+    reason: 'The function signature explicitly accepts `User | null`, meaning the null case is part of the public contract. Any refactor that removes the guard without changing the type signature is a silent regression. TypeScript strict mode would not have caught this — the guard is a runtime check, not a type error.',
+    tests: [
+      'formatUserDisplay(null) returns { name: "Anonymous", avatar: null }',
+      'formatUserDisplay(validUser) returns correct name and avatar',
+      'formatUserDisplay(userWithNoProfileImage) does not throw — avatar is null',
+      'All callers that may pass null are covered by unit tests',
+    ],
+  },
+  prevention: [
+    'Add a unit test for the null input case immediately — it would have caught this regression in CI before deploy.',
+    'Use TypeScript strict mode with noUncheckedIndexedAccess — chain access like profileImage.url requires a non-null assertion or optional chaining.',
+    'In code review, any deletion of a null/undefined guard on a nullable type should be flagged and require explicit justification.',
+    'Consider using a linter rule or snapshot test on utility functions with nullable parameters to detect guard removal.',
+  ],
+}
+
 export const MOCK_UNKNOWN: AnalysisResult = {
   title: 'Insufficient Evidence for Analysis',
   category: 'Analysis Unavailable',

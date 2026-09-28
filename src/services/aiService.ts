@@ -3,6 +3,11 @@ import {
   MOCK_TYPESCRIPT_ERROR,
   MOCK_SQL_ERROR,
   MOCK_API_BREAKING_CHANGE,
+  MOCK_NULL_ADDEVENTLISTENER,
+  MOCK_PYTHON_KEYERROR,
+  MOCK_REACT_INFINITE_LOOP,
+  MOCK_NODE_UNHANDLED_REJECTION,
+  MOCK_GIT_NULL_CHECK_DELETED,
   MOCK_UNKNOWN,
 } from './mockData'
 import { validateAnalysisResult, ValidationError } from './validator'
@@ -52,30 +57,91 @@ interface AIProvider {
 
 function matchMock(input: string): AnalysisResult {
   const lower = input.toLowerCase()
+
+  // TypeScript: Cannot set properties of undefined
   if (
     lower.includes('tenantguid') ||
     lower.includes('cannot set properties of undefined') ||
-    lower.includes('setting \'tenantguid\'') ||
     lower.includes("setting 'tenantguid'")
   ) {
     return MOCK_TYPESCRIPT_ERROR
   }
+
+  // SQL: relation does not exist
   if (
-    lower.includes('relation') && lower.includes('does not exist') ||
+    (lower.includes('relation') && lower.includes('does not exist')) ||
     lower.includes('42p01') ||
     lower.includes('pg_catalog') ||
     (lower.includes('sql') && lower.includes('users'))
   ) {
     return MOCK_SQL_ERROR
   }
+
+  // API breaking change: field rename
   if (
-    lower.includes('user_id') && lower.includes('userid') ||
+    (lower.includes('user_id') && lower.includes('userid')) ||
     lower.includes('breaking change') ||
     lower.includes('api breaking') ||
     (lower.includes('renamed') && lower.includes('field'))
   ) {
     return MOCK_API_BREAKING_CHANGE
   }
+
+  // DOM null: addEventListener on null
+  if (
+    lower.includes('addeventlistener') ||
+    (lower.includes('cannot read properties of null') && lower.includes('submit')) ||
+    lower.includes('domcontentloaded') ||
+    lower.includes('submit-btn')
+  ) {
+    return MOCK_NULL_ADDEVENTLISTENER
+  }
+
+  // Python KeyError: JWT payload
+  if (
+    lower.includes('keyerror') ||
+    lower.includes('verify_token') ||
+    lower.includes('jwt') ||
+    (lower.includes('payload') && lower.includes('user_id'))
+  ) {
+    return MOCK_PYTHON_KEYERROR
+  }
+
+  // React infinite loop
+  if (
+    lower.includes('maximum update depth') ||
+    lower.includes('infinite re-render') ||
+    lower.includes('useeffect') ||
+    lower.includes('filtereditemsitems') ||
+    (lower.includes('setstate') && lower.includes('useeffect')) ||
+    lower.includes('filteritems') ||
+    lower.includes('filtereditem')
+  ) {
+    return MOCK_REACT_INFINITE_LOOP
+  }
+
+  // Node.js unhandled rejection / ECONNREFUSED
+  if (
+    lower.includes('econnrefused') ||
+    lower.includes('unhandledpromiserejection') ||
+    lower.includes('unhandled promise') ||
+    (lower.includes('express') && lower.includes('async')) ||
+    lower.includes('5432')
+  ) {
+    return MOCK_NODE_UNHANDLED_REJECTION
+  }
+
+  // Git diff: null guard deleted
+  if (
+    lower.includes('formatuserdisplay') ||
+    lower.includes('null guard') ||
+    (lower.includes('diff') && lower.includes('null')) ||
+    (lower.includes('firstname') && lower.includes('null')) ||
+    (lower.includes('git diff') && lower.includes('user'))
+  ) {
+    return MOCK_GIT_NULL_CHECK_DELETED
+  }
+
   return MOCK_UNKNOWN
 }
 

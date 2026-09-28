@@ -57,4 +57,76 @@ Consumer code (authentication middleware):
 const userId = response.user_id;          // now undefined
 if (!userId) return res.status(401).json({ error: 'Unauthorized' });`,
   },
+  {
+    id: 'dom-null',
+    label: 'DOM Null Reference',
+    input: `TypeError: Cannot read properties of null (reading 'addEventListener')
+
+const button = document.getElementById('submit-btn');
+button.addEventListener('click', handleSubmit);
+
+// Called on page load before DOM is ready
+initializeForm();`,
+  },
+  {
+    id: 'python-keyerror',
+    label: 'Python KeyError (JWT)',
+    input: `KeyError: 'user_id'
+
+Traceback (most recent call last):
+  File "app/routes/auth.py", line 34, in verify_token
+    user_id = payload['user_id']
+  File "app/middleware/jwt.py", line 18, in decode_token
+    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+
+Token payload received: {"sub": "abc123", "email": "user@example.com", "exp": 1735689600}`,
+  },
+  {
+    id: 'react-loop',
+    label: 'React Infinite Re-render',
+    input: `Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+
+useEffect(() => {
+  const data = processItems(items);
+  setFilteredItems(data);
+  setLastUpdated(new Date());
+}, [items, filteredItems]);`,
+  },
+  {
+    id: 'node-rejection',
+    label: 'Node.js Unhandled Rejection',
+    input: `UnhandledPromiseRejectionWarning: Error: ECONNREFUSED connect ECONNREFUSED 127.0.0.1:5432
+
+async function getUser(id) {
+  const result = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0];
+}
+
+router.get('/users/:id', async (req, res) => {
+  const user = await getUser(req.params.id);
+  res.json(user);
+});
+
+// No try/catch, no error middleware, DB connection not established`,
+  },
+  {
+    id: 'git-regression',
+    label: 'Git Diff — Null Guard Deleted',
+    input: `diff --git a/src/utils/formatUser.ts b/src/utils/formatUser.ts
+index 3a2f1c8..9b4e2d1 100644
+--- a/src/utils/formatUser.ts
++++ b/src/utils/formatUser.ts
+@@ -4,9 +4,7 @@ export function formatUserDisplay(user: User | null) {
+-  if (!user) {
+-    return { name: 'Anonymous', avatar: null };
+-  }
+   return {
+     name: \`\${user.firstName} \${user.lastName}\`,
+     avatar: user.profileImage.url,
+   };
+ }
+
+// Error in production:
+// TypeError: Cannot read properties of null (reading 'firstName')`,
+  },
 ]
