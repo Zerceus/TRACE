@@ -1,0 +1,165 @@
+═══════════════════════════════════════════════════════════════
+  TRACE — Demo Errors (Copy & Paste Ready)
+  8 examples for hackathon demo — all work in mock mode offline
+═══════════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. TypeScript Runtime Error  (PRIMARY DEMO — use this first)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cannot set properties of undefined (setting 'tenantGuid')
+
+getAllMyTaskRecord(filter: any): Observable<any> {
+  let options = undefined;
+
+  if (filter.tenantGuid) {
+    options.tenantGuid = filter.tenantGuid;
+  }
+
+  return this._httpSvc.postApi<any>(
+    'api/home/allmytask/record',
+    filter,
+    options
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. SQL Error
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ERROR:  relation "users" does not exist at character 15
+STATEMENT:  SELECT * FROM users WHERE id = $1
+
+Query context:
+  SELECT id, email, role FROM users WHERE id = $1
+
+PostgreSQL error code: 42P01 (undefined_table)
+Search path: "$user", public
+Current database: app_staging
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. API Breaking Change
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+API Breaking Change detected in GET /api/v1/session response
+
+--- v1.4.2 (previous)
++++ v1.5.0 (current)
+
+ {
+-  "user_id": "abc-123",
++  "userId": "abc-123",
+   "email": "user@example.com",
+   "role": "admin",
+   "expires_at": "2024-12-01T00:00:00Z"
+ }
+
+Consumer code (authentication middleware):
+const userId = response.user_id;          // now undefined
+if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. DOM Null Reference
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TypeError: Cannot read properties of null (reading 'addEventListener')
+
+const button = document.getElementById('submit-btn');
+button.addEventListener('click', handleSubmit);
+
+// Called on page load before DOM is ready
+initializeForm();
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. Python KeyError (JWT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+KeyError: 'user_id'
+
+Traceback (most recent call last):
+  File "app/routes/auth.py", line 34, in verify_token
+    user_id = payload['user_id']
+  File "app/middleware/jwt.py", line 18, in decode_token
+    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+
+Token payload received: {"sub": "abc123", "email": "user@example.com", "exp": 1735689600}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6. React Infinite Re-render
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Warning: Maximum update depth exceeded. This can happen when a component
+calls setState inside useEffect, but useEffect either doesn't have a
+dependency array, or one of the dependencies changes on every render.
+
+useEffect(() => {
+  const data = processItems(items);
+  setFilteredItems(data);
+  setLastUpdated(new Date());
+}, [items, filteredItems]);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7. Node.js Unhandled Promise Rejection
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+UnhandledPromiseRejectionWarning: Error: ECONNREFUSED connect ECONNREFUSED 127.0.0.1:5432
+
+async function getUser(id) {
+  const result = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0];
+}
+
+router.get('/users/:id', async (req, res) => {
+  const user = await getUser(req.params.id);
+  res.json(user);
+});
+
+// No try/catch, no error middleware, DB connection not established
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. Git Diff — Null Guard Deleted
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+diff --git a/src/utils/formatUser.ts b/src/utils/formatUser.ts
+index 3a2f1c8..9b4e2d1 100644
+--- a/src/utils/formatUser.ts
++++ b/src/utils/formatUser.ts
+@@ -4,9 +4,7 @@ export function formatUserDisplay(user: User | null) {
+-  if (!user) {
+-    return { name: 'Anonymous', avatar: null };
+-  }
+   return {
+     name: `${user.firstName} ${user.lastName}`,
+     avatar: user.profileImage.url,
+   };
+ }
+
+// Error in production:
+// TypeError: Cannot read properties of null (reading 'firstName')
+
+
+═══════════════════════════════════════════════════════════════
+  QUICK REFERENCE — which button to click in the app
+═══════════════════════════════════════════════════════════════
+
+  1  →  TypeScript Runtime Error     (best for primary demo)
+  2  →  SQL Error
+  3  →  API Breaking Change
+  4  →  DOM Null Reference
+  5  →  Python KeyError (JWT)
+  6  →  React Infinite Re-render
+  7  →  Node.js Unhandled Rejection
+  8  →  Git Diff — Null Guard Deleted
+
+  All 8 work with zero internet / no API key.
+  Just click the button in the sidebar → Analyze with TRACE.
+
+═══════════════════════════════════════════════════════════════
